@@ -1,5 +1,5 @@
 // Shared shape returned by server actions to client forms (via useActionState).
-export type FormState = { error?: string };
+export type FormState = { error?: string; message?: string };
 
 export const emptyFormState: FormState = {};
 

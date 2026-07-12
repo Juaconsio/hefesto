@@ -45,6 +45,14 @@ export const leaseRepository = {
     });
   },
 
+  listActive() {
+    return prisma.lease.findMany({
+      where: { status: 'ACTIVE' },
+      orderBy: { createdAt: 'desc' },
+      include: { property: true, tenant: true },
+    });
+  },
+
   create(v: ValidatedLease) {
     return prisma.lease.create({
       data: {
