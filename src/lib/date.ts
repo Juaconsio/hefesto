@@ -49,6 +49,15 @@ export function toDateInputValue(date: Date | string | null | undefined): string
   return d.toISOString().slice(0, 10);
 }
 
+/** Shift a "YYYY-MM" period by `delta` months (delta may be negative). */
+export function shiftPeriod(period: string, delta: number): string {
+  const [y, m] = period.split('-').map(Number);
+  const base = new Date(Date.UTC(y, m - 1 + delta, 1));
+  const year = base.getUTCFullYear();
+  const month = String(base.getUTCMonth() + 1).padStart(2, '0');
+  return `${year}-${month}`;
+}
+
 /** Current period as "YYYY-MM" in America/Santiago. */
 export function currentPeriod(now: Date = new Date()): string {
   const parts = new Intl.DateTimeFormat('en-CA', {

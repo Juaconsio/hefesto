@@ -3,10 +3,12 @@
 CRM de administración de arriendos. Herramienta de uso interno para una
 administradora que opera inmuebles propios y administra inmuebles de terceros.
 
-> **v0.1 — incremento actual:** fundaciones + módulos `properties` y `leasing`
-> (propietarios, arrendatarios, contratos). La cobranza (billing), cuentas de
-> servicio (utilities), gastos (expenses) y el reajuste llegan en incrementos
-> posteriores.
+> **v0.1 — estado actual:** fundaciones + módulos `properties`, `leasing`,
+> `billing`, `utilities` y `expenses`. Cierra el flujo de aceptación (crear
+> inmueble → contrato → generar cargos → registrar pago → morosidad en cero),
+> más cuentas de servicio y gastos desde el detalle del inmueble. El reajuste
+> (`RentAdjustment`), el portal del arrendatario y las pasarelas de pago quedan
+> para incrementos posteriores.
 
 ## Stack
 
@@ -28,6 +30,9 @@ src/
   modules/
     properties/   domain → services → repositories
     leasing/      owners, tenants, leases (con máquina de estados del contrato)
+    billing/      IndicadorEconomico (UF), cobranza mensual, pagos, morosidad
+    utilities/    cuentas de servicio por inmueble
+    expenses/     gastos por inmueble (con respaldo)
 prisma/
   schema.prisma   fuente de verdad del modelo de datos
   seed.ts
@@ -64,13 +69,27 @@ Scripts útiles: `pnpm build`, `pnpm typecheck`, `pnpm lint`, `pnpm db:studio`.
 
 crear propietario → crear arrendatario → crear inmueble (propio o administrado)
 → crear contrato (borrador) → activar contrato (el inmueble pasa a *arrendado*)
+→ **generar cargos del mes** (Cobranza) → **registrar pago** → **morosidad en cero**
 → terminar contrato (el inmueble queda *disponible*).
+
+Además, desde el detalle del inmueble: cuentas de servicio (luz/agua/gas/etc.) y
+gastos operativos (un gasto imputado al propietario exige respaldo).
+
+### Cobranza y UF
+
+El job de cobranza es de **disparo manual** (botón "Generar cargos del mes"),
+idempotente por `(contrato, período)`. Para contratos en UF, el cargo se resuelve
+a CLP con el valor de la UF del día de vencimiento vía el adaptador
+`IndicadorEconomico` (mindicador.cl), que **cachea** en `IndicatorValue` y usa el
+**último valor disponible** si la API está caída. Solo los pagos `CONFIRMED`
+cuentan para la morosidad.
 
 ## Pendiente / diferido
 
 - **Auth0**: hoy `src/lib/auth.ts` resuelve al `Owner` administrador sembrado
   (usuario único). Reemplazar por login real de Auth0 cuando exista tenant.
-- **Cloudflare R2**: para comprobantes y fotos (billing/expenses). En la DB solo
-  se guarda la URL.
-- **billing, utilities, expenses, reajuste**: próximos incrementos (el esquema ya
-  contempla sus tablas).
+- **Cloudflare R2**: subida de comprobantes y fotos. Por ahora los campos aceptan
+  una URL; en la DB solo se guarda la URL.
+- **Reajuste (`RentAdjustment`)**, portal del arrendatario, rendición a mandantes,
+  pasarelas de pago (Khipu/Fintoc) y cron: próximos incrementos (el esquema ya
+  contempla sus tablas y costuras).

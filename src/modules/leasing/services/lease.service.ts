@@ -18,6 +18,10 @@ export const leaseService = {
     return leaseRepository.findActiveByProperty(propertyId);
   },
 
+  listActive() {
+    return leaseRepository.listActive();
+  },
+
   async create(input: LeaseInput) {
     const property = await propertyRepository.findById(input.propertyId);
     if (!property) throw new DomainError('El inmueble seleccionado no existe.');

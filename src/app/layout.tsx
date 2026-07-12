@@ -18,6 +18,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <Link href="/">Panel</Link>
               <Link href="/properties">Inmuebles</Link>
               <Link href="/leases">Contratos</Link>
+              <Link href="/billing">Cobranza</Link>
               <Link href="/owners">Propietarios</Link>
               <Link href="/tenants">Arrendatarios</Link>
             </nav>
