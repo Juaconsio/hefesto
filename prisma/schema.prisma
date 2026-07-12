@@ -1,0 +1,322 @@
+// Hefesto — Prisma schema (v0.1). Source of truth for the data model.
+// Convention: code & model in English; Spanish only for user-facing labels.
+// Money = Decimal (never float). Datetimes stored in UTC.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ----------------------------------------------------------------------------
+// Enums
+// ----------------------------------------------------------------------------
+
+enum PropertyType {
+  HOUSE
+  APARTMENT
+}
+
+enum Tenure {
+  OWNED
+  MANAGED
+}
+
+enum PropertyStatus {
+  AVAILABLE
+  RENTED
+  UNDER_REPAIR
+}
+
+enum Currency {
+  CLP
+  UF
+}
+
+enum AdjustmentType {
+  NONE
+  IPC
+  UF
+  FIXED
+}
+
+enum LeaseStatus {
+  DRAFT
+  ACTIVE
+  TERMINATED
+}
+
+enum PaymentMethod {
+  MANUAL
+  KHIPU
+  FINTOC
+}
+
+enum PaymentStatus {
+  PENDING
+  CONFIRMED
+  FAILED
+}
+
+enum UtilityType {
+  ELECTRICITY
+  WATER
+  GAS
+  PROPERTY_TAX
+  CLEANING_LIGHTING
+  COMMON_EXPENSES
+}
+
+enum UtilityPayer {
+  ADMINISTRATOR
+  TENANT
+}
+
+enum UtilityStatus {
+  CURRENT
+  PENDING
+  OVERDUE
+}
+
+enum ExpenseCategory {
+  REPAIR
+  REMODELING
+  MAINTENANCE
+  OTHER
+}
+
+enum RentAdjustmentStatus {
+  SUGGESTED
+  CONFIRMED
+  SKIPPED
+}
+
+enum IndicatorType {
+  UF
+  IPC
+}
+
+// ----------------------------------------------------------------------------
+// Core domain
+// ----------------------------------------------------------------------------
+
+/// Owner of a property: either the administrator herself (isAdmin = true) or a
+/// third-party mandante. The owned/managed distinction lives in Property.tenure.
+model Owner {
+  id      String  @id @default(cuid())
+  name    String
+  rut     String  @unique
+  email   String?
+  phone   String?
+  isAdmin Boolean @default(false) // true = la administradora (sin comisión)
+
+  properties Property[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("owners")
+}
+
+model Property {
+  id            String         @id @default(cuid())
+  ownerId       String
+  alias         String
+  address       String
+  comuna        String
+  siiRol        String? // rol SII (contribuciones / DJ1835)
+  type          PropertyType
+  tenure        Tenure
+  status        PropertyStatus @default(AVAILABLE)
+  dfl2          Boolean        @default(false) // exención impuesto a la renta
+  commissionPct Decimal?       @db.Decimal(5, 2) // solo si tenure = MANAGED
+
+  owner           Owner            @relation(fields: [ownerId], references: [id])
+  leases          Lease[]
+  utilityAccounts UtilityAccount[]
+  expenses        Expense[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([ownerId])
+  @@map("properties")
+}
+
+model Tenant {
+  id    String  @id @default(cuid())
+  name  String
+  rut   String  @unique
+  email String?
+  phone String?
+
+  leases Lease[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("tenants")
+}
+
+model Lease {
+  id                     String         @id @default(cuid())
+  propertyId             String
+  tenantId               String
+  baseAmount             Decimal        @db.Decimal(14, 2) // en `currency`
+  currency               Currency
+  dueDay                 Int // día de vencimiento (1-31)
+  adjustmentType         AdjustmentType @default(NONE)
+  adjustmentPeriodMonths Int? // p.ej. 12 = anual
+  nextAdjustment         DateTime?
+  depositAmount          Decimal?       @db.Decimal(14, 2) // garantía (monto)
+  startDate              DateTime
+  endDate                DateTime?
+  status                 LeaseStatus    @default(DRAFT)
+
+  property        Property         @relation(fields: [propertyId], references: [id])
+  tenant          Tenant           @relation(fields: [tenantId], references: [id])
+  charges         Charge[]
+  payments        Payment[]
+  rentAdjustments RentAdjustment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([propertyId])
+  @@index([tenantId])
+  @@map("leases")
+}
+
+// ----------------------------------------------------------------------------
+// Billing (ledger-style, append-only) — modeled now, used in the next increment
+// ----------------------------------------------------------------------------
+
+/// Monthly charge. Idempotent per (leaseId, period). Append-only ledger record.
+model Charge {
+  id       String   @id @default(cuid())
+  leaseId  String
+  period   String // YYYY-MM
+  amountClp Decimal @db.Decimal(14, 2) // monto resuelto a CLP
+  ufValue  Decimal? @db.Decimal(14, 4) // valor UF usado (trazabilidad)
+  dueDate  DateTime
+
+  lease    Lease     @relation(fields: [leaseId], references: [id])
+  payments Payment[]
+
+  createdAt DateTime @default(now())
+
+  @@unique([leaseId, period]) // idempotencia del job de cobranza
+  @@index([leaseId])
+  @@map("charges")
+}
+
+/// Payment. PENDING -> CONFIRMED. Only CONFIRMED counts for morosidad.
+model Payment {
+  id          String        @id @default(cuid())
+  leaseId     String
+  chargeId    String?
+  amount      Decimal       @db.Decimal(14, 2)
+  paidAt      DateTime?
+  method      PaymentMethod @default(MANUAL)
+  status      PaymentStatus @default(PENDING)
+  receiptUrl  String? // blob en R2
+  externalRef String? @unique // id pasarela (idempotencia webhook)
+
+  lease  Lease   @relation(fields: [leaseId], references: [id])
+  charge Charge? @relation(fields: [chargeId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([leaseId])
+  @@index([chargeId])
+  @@map("payments")
+}
+
+// ----------------------------------------------------------------------------
+// Utilities & expenses (per property)
+// ----------------------------------------------------------------------------
+
+model UtilityAccount {
+  id            String        @id @default(cuid())
+  propertyId    String
+  type          UtilityType
+  payer         UtilityPayer
+  provider      String?
+  accountNumber String?
+  status        UtilityStatus @default(CURRENT)
+  currentAmount Decimal?      @db.Decimal(14, 2)
+  dueDate       DateTime?
+  lastPaidAt    DateTime?
+
+  property Property @relation(fields: [propertyId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([propertyId])
+  @@map("utility_accounts")
+}
+
+model Expense {
+  id              String          @id @default(cuid())
+  propertyId      String
+  category        ExpenseCategory
+  description     String
+  amount          Decimal         @db.Decimal(14, 2)
+  date            DateTime
+  billableToOwner Boolean         @default(false) // entra a rendición (v0.2)
+  receiptUrl      String? // boleta/factura
+  photoUrl        String? // respaldo fotográfico
+
+  property Property @relation(fields: [propertyId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([propertyId])
+  @@map("expenses")
+}
+
+// ----------------------------------------------------------------------------
+// Chilean domain: rent adjustment & economic indicator cache
+// ----------------------------------------------------------------------------
+
+/// Rent adjustment suggestion. SUGGESTED -> CONFIRMED | SKIPPED. Append-only.
+/// On CONFIRMED, Lease.baseAmount is updated and history is preserved here.
+model RentAdjustment {
+  id            String               @id @default(cuid())
+  leaseId       String
+  suggestedAt   DateTime             @default(now())
+  effectiveDate DateTime
+  previousAmount Decimal             @db.Decimal(14, 2)
+  suggestedAmount Decimal            @db.Decimal(14, 2)
+  confirmedAmount Decimal?           @db.Decimal(14, 2)
+  ipcAccumulated Decimal?            @db.Decimal(8, 4) // IPC acumulado aplicado (%)
+  status        RentAdjustmentStatus @default(SUGGESTED)
+
+  lease Lease @relation(fields: [leaseId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([leaseId])
+  @@map("rent_adjustments")
+}
+
+/// Cache of external economic indicators (UF/IPC) with (type, date) uniqueness.
+/// Populated by the IndicadorEconomico adapter; enables last-value fallback.
+model IndicatorValue {
+  id        String        @id @default(cuid())
+  type      IndicatorType
+  date      DateTime      @db.Date
+  value     Decimal       @db.Decimal(14, 4)
+  createdAt DateTime      @default(now())
+
+  @@unique([type, date])
+  @@index([type, date])
+  @@map("indicator_values")
+}
