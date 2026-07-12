@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { Prisma } from '@prisma/client';
 import { billingService } from '@/modules/billing/services/billing.service';
-import { currentPeriod } from '@/lib/date';
+import { currentPeriod, shiftPeriod } from '@/lib/date';
 import { formatClp } from '@/lib/money';
 import { formatDate } from '@/lib/date';
 import { GenerateChargesButton } from './GenerateChargesButton';
@@ -23,7 +23,19 @@ export default async function BillingPage({
       <div className="page-header">
         <div>
           <h1>Cobranza</h1>
-          <div className="subtitle">Cargos del período {period}.</div>
+          <div className="subtitle">
+            <Link href={`/billing?period=${shiftPeriod(period, -1)}`}>← {shiftPeriod(period, -1)}</Link>
+            {' · '}
+            <strong>Período {period}</strong>
+            {' · '}
+            <Link href={`/billing?period=${shiftPeriod(period, 1)}`}>{shiftPeriod(period, 1)} →</Link>
+            {period !== currentPeriod() && (
+              <>
+                {' · '}
+                <Link href="/billing">hoy</Link>
+              </>
+            )}
+          </div>
         </div>
         <GenerateChargesButton period={period} />
       </div>

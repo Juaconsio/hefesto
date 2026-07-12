@@ -30,6 +30,29 @@ export async function addUtility(
   return { message: 'Cuenta de servicio agregada.' };
 }
 
+export async function updateUtility(
+  propertyId: string,
+  utilityId: string,
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  try {
+    await utilityService.update(utilityId, {
+      propertyId,
+      type: requiredString(formData.get('type')) as UtilityType,
+      payer: requiredString(formData.get('payer')) as UtilityPayer,
+      status: requiredString(formData.get('status')) as UtilityStatus,
+      provider: optionalString(formData.get('provider')),
+      accountNumber: optionalString(formData.get('accountNumber')),
+      currentAmount: optionalString(formData.get('currentAmount')),
+    });
+  } catch (err) {
+    return { error: toErrorMessage(err) };
+  }
+  revalidatePath(`/properties/${propertyId}`);
+  return { message: 'Cuenta actualizada.' };
+}
+
 export async function deleteUtility(propertyId: string, utilityId: string): Promise<void> {
   await utilityService.delete(utilityId);
   revalidatePath(`/properties/${propertyId}`);

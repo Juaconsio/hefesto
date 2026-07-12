@@ -17,8 +17,9 @@ import { formatMoney, formatClp } from '@/lib/money';
 import { formatDate } from '@/lib/date';
 import { formatRut } from '@/lib/rut';
 import { AddUtilityForm } from './AddUtilityForm';
+import { EditUtilityForm } from './EditUtilityForm';
 import { AddExpenseForm } from './AddExpenseForm';
-import { addUtility, deleteUtility, addExpense, deleteExpense } from './actions';
+import { addUtility, updateUtility, deleteUtility, addExpense, deleteExpense } from './actions';
 
 export const dynamic = 'force-dynamic';
 
@@ -154,6 +155,7 @@ export default async function PropertyDetailPage({ params }: { params: Promise<{
             <tbody>
               {property.utilityAccounts.map((u) => {
                 const del = deleteUtility.bind(null, property.id, u.id);
+                const edit = updateUtility.bind(null, property.id, u.id);
                 return (
                   <tr key={u.id}>
                     <td>{UTILITY_TYPE_LABELS[u.type]}</td>
@@ -164,11 +166,14 @@ export default async function PropertyDetailPage({ params }: { params: Promise<{
                       <UtilityStatusBadge status={u.status} />
                     </td>
                     <td>
-                      <form action={del}>
-                        <button type="submit" className="btn btn-danger">
-                          Eliminar
-                        </button>
-                      </form>
+                      <div className="inline-actions">
+                        <EditUtilityForm action={edit} utility={u} />
+                        <form action={del}>
+                          <button type="submit" className="btn btn-danger">
+                            Eliminar
+                          </button>
+                        </form>
+                      </div>
                     </td>
                   </tr>
                 );
