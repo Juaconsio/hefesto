@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    # Unit tests mock the repository layer and pages are force-dynamic, so no
+    # database is needed. DATABASE_URL is a dummy value just so Prisma is happy.
+    env:
+      DATABASE_URL: postgresql://hefesto:hefesto@localhost:5432/hefesto?schema=public
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.10.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm prisma generate
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build
